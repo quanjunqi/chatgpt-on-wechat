@@ -121,11 +121,14 @@ class WechatChannel(ChatChannel):
         self.user_id = itchat.instance.storageClass.userName
         self.name = itchat.instance.storageClass.nickName
         logger.info("Wechat login success, user_id: {}, nickname: {}".format(self.user_id, self.name))
-        # start message listener
-        itchat.run()
+
+
         # start a new thread to send messages regularly
         self.group_message_thread = threading.Thread(target=self.send_regular_messages)
         self.group_message_thread.start()
+        # start message listener
+        itchat.run()
+    
 
     # handle_* 系列函数处理收到的消息后构造Context，然后传入produce函数中处理Context和发送回复
     # Context包含了消息的所有信息，包括以下属性
@@ -212,8 +215,8 @@ class WechatChannel(ChatChannel):
     def send_group_message(self, group_id, message):
         itchat.send(message, toUserName=group_id)
         logger.info("[WX] sendGroupMsg={}, groupId={}".format(message, group_id))
-    # 30秒一次
-
+    
+    #查找群聊id
     def get_group_id(self, group_name):
         """
         Get the ID of a WeChat group by its name.
@@ -230,14 +233,28 @@ class WechatChannel(ChatChannel):
         else:
             logger.warning("[WX] Group {} not found".format(group_name))
             return None
-        
+    
+#定时推送
     def send_regular_messages(self):
         group_id = self.get_group_id('黑玫瑰将再次绽放')  # replace with your group id
-        data=datetime.datetime.now()
-        message=f"test,当前时间{data}"
+        # data=datetime.datetime.now()
+        # message=f"test,当前时间{data}"
+        gif_path = "/root/worker/chatgpt-on-wechat/images/wanzi.gif"
+        duration= 60 * 5
         while True:
-            self.send_group_message(group_id, message)
-            time.sleep(30)
+            print(group_id)
+            # self.send_group_message(group_id, message)
+            #判断图片是否存在
+            if not os.path.exists(gif_path):
+                print("GIF file does not exist: {}".format(gif_path))
+                break
+            response = itchat.send_image(gif_path, toUserName=group_id)
+            #判断图片是否发送成功
+            if response['BaseResponse']['ErrMsg'] != '请求成功':
+                print("Failed to send GIF: {}".format(response))
+            else:
+                print("GIF sent successfully")
+            time.sleep(duration)
         
 
   
