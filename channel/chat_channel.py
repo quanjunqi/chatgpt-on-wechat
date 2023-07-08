@@ -12,6 +12,8 @@ from common.dequeue import Dequeue
 from common.log import logger
 from config import conf
 from plugins import *
+from channel.chat_message import ChatMessage
+
 
 try:
     from voice.audio_convert import any_to_wav
@@ -122,11 +124,19 @@ class ChatChannel(Channel):
                     pass
                 else:
                     return None
+  
+        # match_prefix 匹配内容 
             content = content.strip()
+            # 匹配头
             img_match_prefix = check_prefix(content, conf().get("image_create_prefix"))
+            # 全文匹配
+            cron_match_prefix = check_prefix_match(content, conf().get("match_create_prefix"))
+
             if img_match_prefix:
                 content = content.replace(img_match_prefix, "", 1)
                 context.type = ContextType.IMAGE_CREATE
+            elif cron_match_prefix:
+                context.type = ContextType.CRON_CREATE
             else:
                 context.type = ContextType.TEXT
             context.content = content.strip()
@@ -135,8 +145,9 @@ class ChatChannel(Channel):
         elif context.type == ContextType.VOICE:
             if "desire_rtype" not in context and conf().get("voice_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context["desire_rtype"] = ReplyType.VOICE
-
         return context
+
+
 
     def _handle(self, context: Context):
         if context is None or not context.content:
@@ -164,7 +175,7 @@ class ChatChannel(Channel):
             logger.debug("[WX] ready to handle context: type={}, content={}".format(context.type, context.content))
             if e_context.is_break():
                 context["generate_breaked_by"] = e_context["breaked_by"]
-            if context.type == ContextType.TEXT or context.type == ContextType.IMAGE_CREATE:  # 文字和图片消息
+            if context.type == ContextType.TEXT or context.type == ContextType.IMAGE_CREATE :  # 文字和图片消息
                 reply = super().build_reply_content(context.content, context)
             elif context.type == ContextType.VOICE:  # 语音消息
                 cmsg = context["msg"]
@@ -195,10 +206,54 @@ class ChatChannel(Channel):
                         return
             elif context.type == ContextType.IMAGE:  # 图片消息，当前无默认逻辑
                 pass
+            elif context.type == ContextType.CRON_CREATE: # 定时任务，当前无默认逻辑
+                msg: ChatMessage = e_context["context"]["msg"]
+                match = re.match(r"(\d+)\s*(秒|分钟|小时|天)后提醒我(.+)", e_context["context"].content)
+                duration = int(match.group(1))
+                unit = match.group(2)
+                reminder = match.group(3)
+                # 转换时间单位为秒
+                if unit == "秒":
+                    pass  # duration is already in seconds
+                elif unit == "分钟":
+                    duration *= 60
+                elif unit == "小时":
+                    duration *= 60 * 60
+                elif unit == "天":
+                    duration *= 60 * 60 * 24
+                else:
+                    raise ValueError(f"未知的时间单位: {unit}")
+                # 创建一个新的线程，在指定的时间后执行self.remind_user函数
+                reply = Reply()
+                reply.type = ReplyType.CRON_CREATE
+                if e_context["context"]["isgroup"]:
+                    reply.content = f"好的{msg.actual_user_nickname},{match.group(1)}{unit}后我会提醒你{reminder}。"
+                    threading.Thread(target=self.remind_user, args=(e_context,context,e_context["context"]["msg"], duration, reminder)).start()
+                else:
+                    reply.content = f"好的{msg.from_user_nickname},{match.group(1)}{unit}后我会提醒你{reminder}。"
+                    threading.Thread(target=self.remind_user, args=(e_context,context,e_context["context"]["msg"], duration, reminder)).start()
+                e_context["reply"] = reply
             else:
                 logger.error("[WX] unknown context type: {}".format(context.type))
                 return
         return reply
+        
+        #定时提醒
+    def remind_user(self,e_context,context,msg, duration, reminder):
+        # 等待指定的分钟数
+        msg: ChatMessage = msg
+        time.sleep(duration)
+        # 发送提醒
+        reply = Reply()
+        reply.type = ReplyType.CRON_CREATE
+        if msg.is_group:
+            reply.content = f"@{msg.actual_user_nickname}，提醒你该{reminder}"
+        else:
+            reply.content = f"{msg.from_user_nickname}，提醒你{reminder}。"
+        e_context["reply"] = reply
+        self._send_reply(context, reply)
+        e_context.action = EventAction.BREAK_PASS  # 事件结束，并跳过处理context的默认逻辑
+
 
     def _decorate_reply(self, context: Context, reply: Reply) -> Reply:
         if reply and reply.type:
@@ -217,6 +272,8 @@ class ChatChannel(Channel):
                     reply.content = "不支持发送的消息类型: " + str(reply.type)
 
                 if reply.type == ReplyType.TEXT:
+                    reply_text = reply.content
+                elif reply.type == ReplyType.CRON_CREATE:
                     reply_text = reply.content
                     if desire_rtype == ReplyType.VOICE and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                         reply = super().build_text_to_voice(reply.content)
@@ -262,6 +319,7 @@ class ChatChannel(Channel):
             if retry_cnt < 2:
                 time.sleep(3 + 3 * retry_cnt)
                 self._send(reply, context, retry_cnt + 1)
+    
 
     def _success_callback(self, session_id, **kwargs):  # 线程正常结束时的回调函数
         logger.debug("Worker return success, session_id = {}".format(session_id))
@@ -353,6 +411,13 @@ def check_prefix(content, prefix_list):
             return prefix
     return None
 
+def check_prefix_match(content, prefix_list):
+    if not prefix_list:
+        return None
+    for prefix in prefix_list:
+        if prefix in content:
+            return prefix
+    return None
 
 def check_contain(content, keyword_list):
     if not keyword_list:

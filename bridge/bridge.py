@@ -9,6 +9,7 @@ from translate.factory import create_translator
 from voice.factory import create_voice
 
 
+
 @singleton
 class Bridge(object):
     def __init__(self):
@@ -45,6 +46,7 @@ class Bridge(object):
 
     def fetch_reply_content(self, query, context: Context) -> Reply:
         return self.get_bot("chat").reply(query, context)
+    
 
     def fetch_voice_to_text(self, voiceFile) -> Reply:
         return self.get_bot("voice_to_text").voiceToText(voiceFile)

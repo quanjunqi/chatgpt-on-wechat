@@ -11,7 +11,7 @@ import threading
 import time
 
 import requests
-
+import datetime
 from bridge.context import *
 from bridge.reply import *
 from channel.chat_channel import ChatChannel
@@ -123,6 +123,9 @@ class WechatChannel(ChatChannel):
         logger.info("Wechat login success, user_id: {}, nickname: {}".format(self.user_id, self.name))
         # start message listener
         itchat.run()
+        # start a new thread to send messages regularly
+        self.group_message_thread = threading.Thread(target=self.send_regular_messages)
+        self.group_message_thread.start()
 
     # handle_* 系列函数处理收到的消息后构造Context，然后传入produce函数中处理Context和发送回复
     # Context包含了消息的所有信息，包括以下属性
@@ -201,3 +204,40 @@ class WechatChannel(ChatChannel):
             image_storage.seek(0)
             itchat.send_image(image_storage, toUserName=receiver)
             logger.info("[WX] sendImage, receiver={}".format(receiver))
+        elif reply.type == ReplyType.CRON_CREATE:
+            itchat.send(reply.content, toUserName=receiver)
+            logger.info("[WX] sendMsg={}, receiver={}".format(reply, receiver))
+
+    #主动发送群聊消息
+    def send_group_message(self, group_id, message):
+        itchat.send(message, toUserName=group_id)
+        logger.info("[WX] sendGroupMsg={}, groupId={}".format(message, group_id))
+    # 30秒一次
+
+    def get_group_id(self, group_name):
+        """
+        Get the ID of a WeChat group by its name.
+
+        Args:
+            group_name (str): The name of the group.
+
+        Returns:
+            str: The ID of the group, or None if the group is not found.
+        """
+        groups = itchat.search_chatrooms(name=group_name)
+        if groups:
+            return groups[0]['UserName']
+        else:
+            logger.warning("[WX] Group {} not found".format(group_name))
+            return None
+        
+    def send_regular_messages(self):
+        group_id = self.get_group_id('黑玫瑰将再次绽放')  # replace with your group id
+        data=datetime.datetime.now()
+        message=f"test,当前时间{data}"
+        while True:
+            self.send_group_message(group_id, message)
+            time.sleep(30)
+        
+
+  

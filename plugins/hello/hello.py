@@ -29,7 +29,6 @@ class Hello(Plugin):
             ContextType.PATPAT,
         ]:
             return
-
         if e_context["context"].type == ContextType.JOIN_GROUP:
             e_context["context"].type = ContextType.TEXT
             msg: ChatMessage = e_context["context"]["msg"]

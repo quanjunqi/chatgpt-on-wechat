@@ -8,7 +8,7 @@ class ReplyType(Enum):
     VOICE = 2  # 音频文件
     IMAGE = 3  # 图片文件
     IMAGE_URL = 4  # 图片URL
-
+    CRON_CREATE = 22  # 定时任务创建回复
     INFO = 9
     ERROR = 10
 

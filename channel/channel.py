@@ -33,6 +33,8 @@ class Channel(object):
         """
         raise NotImplementedError
 
+    # 添加处理逻辑
+ 
     def build_reply_content(self, query, context: Context = None) -> Reply:
         return Bridge().fetch_reply_content(query, context)
 

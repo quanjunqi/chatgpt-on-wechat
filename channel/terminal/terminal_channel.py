@@ -33,7 +33,6 @@ class TerminalChannel(ChatChannel):
         print("\nBot:")
         if reply.type == ReplyType.IMAGE:
             from PIL import Image
-
             image_storage = reply.content
             image_storage.seek(0)
             img = Image.open(image_storage)
